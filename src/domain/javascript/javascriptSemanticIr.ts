@@ -138,6 +138,8 @@ export interface JavaScriptSemanticCallArgument {
   /** Unwrapped value expression; null for a spread or non-expression slot. */
   readonly valueExpressionLocation: JavaScriptSourceRange | null;
   readonly spread: boolean;
+  /** Direct scalar syntax, before runtime evaluation; omitted for other expressions. */
+  readonly literal?: string | number | boolean | null;
 }
 
 /** One positional argument that may initialize one local parameter binding. */

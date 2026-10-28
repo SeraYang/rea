@@ -771,12 +771,32 @@ function* createCallSiteNodes(
       call.callerCallableId === null
         ? null
         : (callables.get(call.callerCallableId)?.node_id ?? null);
+    const argumentsValue = call.arguments.flatMap((argument) =>
+      Object.hasOwn(argument, "literal")
+        ? [
+            {
+              index: argument.index,
+              value: argument.literal ?? null,
+              source_range:
+                argument.valueExpressionLocation === null
+                  ? null
+                  : {
+                      start: { ...argument.valueExpressionLocation.start },
+                      end: { ...argument.valueExpressionLocation.end },
+                    },
+            },
+          ]
+        : [],
+    );
     const node = retainNode(state, file, {
       kind: "call-site",
       roleKey: `call:${call.callSiteId}`,
       location: call.location,
       label: call.kind,
       functionNodeId: owner,
+      ...(argumentsValue.length === 0
+        ? {}
+        : { properties: { arguments: argumentsValue } }),
     });
     if (node !== null) result.set(call.callSiteId, node);
   }

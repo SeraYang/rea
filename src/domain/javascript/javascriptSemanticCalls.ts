@@ -30,6 +30,7 @@ import { traverseJavaScriptValueAst } from "./javascriptSemanticTraversal.js";
 import { range } from "./javascriptStaticAnalysisHelpers.js";
 import { semanticCallableResultKind } from "./javascriptSemanticCallableResults.js";
 import { assignedSemanticResultBindings } from "./javascriptSemanticDataEffectHelpers.js";
+import { semanticPrimitiveSet } from "./javascriptSemanticPrimitives.js";
 
 /** Local call, flow, capture, and unsupported-frontier facts. */
 export interface JavaScriptSemanticCallAnalysis {
@@ -138,7 +139,7 @@ const collectCallSite = (
     bindingCache: context.bindingResolutionCache,
   });
   const callSiteId = semanticCallSiteId(node);
-  const argumentsValue = retainedArguments(node.arguments);
+  const argumentsValue = retainedArguments(node.arguments, state);
   const site: JavaScriptSemanticCallSite = {
     callSiteId,
     kind: t.isNewExpression(node) ? "construct" : "call",
@@ -209,6 +210,7 @@ const retainedArguments = (
     | t.ArgumentPlaceholder
     | null
   )[],
+  state: JavaScriptSemanticAnalysisState,
 ): JavaScriptSemanticCallSite["arguments"] => {
   const retained: JavaScriptSemanticCallSite["arguments"][number][] = [];
   for (const [index, node] of nodes.entries()) {
@@ -223,9 +225,43 @@ const retainedArguments = (
       location: range(node),
       valueExpressionLocation: valueNode === null ? null : range(valueNode),
       spread: t.isSpreadElement(node),
+      ...(valueNode === null ? {} : directLiteral(valueNode, state)),
     });
   }
   return retained;
+};
+
+/** Retain direct scalar syntax only; do not infer values through bindings. */
+const directLiteral = (
+  node: t.Node,
+  state: JavaScriptSemanticAnalysisState,
+): { readonly literal?: string | number | boolean | null } => {
+  const retain = (value: string | number | boolean | null) => {
+    const parsed = semanticPrimitiveSet([value]);
+    if (parsed.status === "literal") return { literal: parsed.value };
+    if (parsed.status === "unknown" && parsed.resourceLimit !== undefined)
+      state.valueResourceLimits.add(parsed.resourceLimit);
+    return {};
+  };
+  if (t.isStringLiteral(node) || t.isBooleanLiteral(node))
+    return retain(node.value);
+  if (t.isNullLiteral(node)) return retain(null);
+  if (t.isNumericLiteral(node) && Number.isFinite(node.value))
+    return retain(node.value);
+  if (
+    t.isUnaryExpression(node) &&
+    (node.operator === "-" || node.operator === "+") &&
+    t.isNumericLiteral(node.argument)
+  ) {
+    const value =
+      node.operator === "-" ? -node.argument.value : node.argument.value;
+    if (Number.isFinite(value) && !Object.is(value, -0)) return retain(value);
+  }
+  if (t.isTemplateLiteral(node) && node.expressions.length === 0) {
+    const value = node.quasis[0]?.value.cooked;
+    if (typeof value === "string") return retain(value);
+  }
+  return {};
 };
 
 const collectArgumentFlows = (

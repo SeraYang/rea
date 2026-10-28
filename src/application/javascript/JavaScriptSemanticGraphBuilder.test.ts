@@ -31,6 +31,45 @@ import { getterExpansionSource } from "../../../tests/fixtures/javascriptGetterE
 
 const SHA256 = "a".repeat(64);
 
+it("retains direct call literals and resolves literal queries to their call site", () => {
+  const source =
+    'api.rpc("proc_0", 7, false, null, dynamic, ...values, `fixed`, -3);';
+  const graph = graphFor(source);
+  const call = graph.nodes.find(({ kind }) => kind === "call-site");
+  const argumentsValue = call?.properties.arguments;
+  expect(argumentsValue).toEqual([
+    expect.objectContaining({
+      index: 0,
+      value: "proc_0",
+      source_range: expect.any(Object),
+    }),
+    expect.objectContaining({ index: 1, value: 7 }),
+    expect.objectContaining({ index: 2, value: false }),
+    expect.objectContaining({ index: 3, value: null }),
+    expect.objectContaining({ index: 6, value: "fixed" }),
+    expect.objectContaining({ index: 7, value: -3 }),
+  ]);
+  if (call === undefined) throw new Error("Expected call site");
+  const trace = queryJavaScriptSemanticGraph(
+    graph,
+    javaScriptSemanticQueryInputSchema.parse({
+      seed: { kind: "literal", value: "proc_0" },
+      direction: "forward-influence",
+    }),
+  );
+  expect(trace.seed_node_ids).toContain(call.node_id);
+});
+
+it("reports the primitive byte bound when a direct argument is too large", () => {
+  const source = `rpc(${JSON.stringify("x".repeat(175_000))});`;
+  const ir = analyzeJavaScriptSemantics(source);
+  expect(ir.coverage.resourceLimits).toContain("primitive-bytes");
+  const graph = graphFor(source, ir);
+  const call = graph.nodes.find(({ kind }) => kind === "call-site");
+  expect(call?.properties.arguments).toBeUndefined();
+  expect(graph.coverage.status).not.toBe("complete");
+});
+
 it("projects bounded alias selection as a resource-limit unknown", () => {
   const source = aliasSelectionBudgetSource();
   const ir = analyzeJavaScriptSemantics(source);
