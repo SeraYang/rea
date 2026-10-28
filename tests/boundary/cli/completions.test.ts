@@ -79,6 +79,13 @@ it("uses canonical global flag metadata and retains command options and enum hin
     "md",
     "jsonl",
   ]);
+  expect(complete(["rea", "mcp", "doctor", "--"])).toEqual([
+    "--format",
+    "--json",
+    "--full-output",
+    "--help",
+  ]);
+  expect(complete(["rea", "mcp", "doctor", "-h"])).toEqual(["-h"]);
   expect(complete(["rea", "--filter-output", "mcp", ""])).toEqual([
     "instructions",
     "mcp",
@@ -136,6 +143,10 @@ COMP_WORDS=(rea instructions --format "")
 COMP_CWORD=3
 _incur_complete_rea || exit
 printf 'format=%s\\n' "\${COMPREPLY[*]}"
+COMP_WORDS=(rea mcp doctor --)
+COMP_CWORD=3
+_incur_complete_rea || exit
+printf 'doctor=%s\\n' "\${COMPREPLY[*]}"
 `,
       ],
       {
@@ -152,5 +163,8 @@ printf 'format=%s\\n' "\${COMPREPLY[*]}"
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain("mcp=add doctor\n");
     expect(result.stdout).toContain("format=toon json yaml md jsonl csv tsv\n");
+    expect(result.stdout).toContain(
+      "doctor=--format --json --full-output --help\n",
+    );
   },
 );

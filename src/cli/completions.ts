@@ -9,19 +9,16 @@ import {
   normalizeCliArguments,
   splitIncurBuiltinArguments,
 } from "../cliBuiltinArguments.js";
-import {
-  CLI_DOCUMENT_OUTPUT_FORMATS,
-  CLI_OUTPUT_FORMATS,
-  parseCliOutputArguments,
-} from "../cliOutput.js";
+import { CLI_OUTPUT_FORMATS, parseCliOutputArguments } from "../cliOutput.js";
 import { bashCompletionScript } from "./bashCompletionRegistration.js";
+import { MCP_DOCTOR_ALIAS, MCP_DOCTOR_OPTIONS } from "../mcpDoctorOptions.js";
 
 type Commands = Parameters<typeof Completions.complete>[0];
 type CompletionCli = Parameters<typeof Cli.toCommands.get>[0];
 type ServeOptions = NonNullable<Parameters<CompletionCli["serve"]>[1]>;
 const ROOT_FLAGS = new Set(["--mcp", "--update", "--version"]);
 
-const standardGlobals = (root: boolean, doctor: boolean): z.ZodObject =>
+const standardGlobals = (root: boolean): z.ZodObject =>
   z.object(
     Object.fromEntries([
       ...[...VALUED_OUTPUT_FLAGS].map(
@@ -29,11 +26,7 @@ const standardGlobals = (root: boolean, doctor: boolean): z.ZodObject =>
           [
             flag.slice(2),
             flag === "--format"
-              ? z
-                  .enum(
-                    doctor ? CLI_DOCUMENT_OUTPUT_FORMATS : CLI_OUTPUT_FORMATS,
-                  )
-                  .optional()
+              ? z.enum(CLI_OUTPUT_FORMATS).optional()
               : z.string().optional(),
           ] as const,
       ),
@@ -113,17 +106,17 @@ export const createCliCompletions = (
         normalizeCliArguments(words.slice(1, index)),
       ).command;
       const input = [cli.name, ...before, words[index] ?? ""];
+      const doctor = before[0] === "mcp" && before[1] === "doctor";
       const candidates = Completions.complete(
         completionCommands(cli),
         undefined,
         input,
         input.length - 1,
         {
-          schema: standardGlobals(
-            before.length === 0,
-            before[0] === "mcp" && before[1] === "doctor",
-          ),
-          alias: { help: "h" },
+          schema: doctor
+            ? MCP_DOCTOR_OPTIONS
+            : standardGlobals(before.length === 0),
+          alias: doctor ? MCP_DOCTOR_ALIAS : { help: "h" },
         },
       );
       const result = Completions.format(shell, candidates);
