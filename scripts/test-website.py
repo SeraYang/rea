@@ -562,7 +562,8 @@ class WebsiteTranslationChecks(unittest.TestCase):
 
     def test_completed_script_tag_pages_pass_search_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
-            site = Path(directory)
+            # check_site canonicalizes its root before collecting page keys.
+            site = Path(directory).resolve()
             (site / "assets").mkdir()
             shutil.copyfile(ROOT / "website/_site/assets/social-card.png", site / "assets/social-card.png")
             shutil.copyfile(ROOT / "website/public/robots.txt", site / "robots.txt")
