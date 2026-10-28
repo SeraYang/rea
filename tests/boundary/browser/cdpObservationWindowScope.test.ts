@@ -591,6 +591,21 @@ it.each(redirectCases)(
           reason: "invalid_protocol_value",
         }),
       );
+    const scope = expected(browser.allowedOrigin).scope;
+    if (scope === "outside_policy" || scope === "unsupported") {
+      expect(observation.completeness.excluded).toContainEqual(
+        expect.objectContaining({
+          section: "timeline",
+          reason:
+            scope === "outside_policy"
+              ? "disallowed_origin"
+              : "unsupported_url",
+        }),
+      );
+      expect(observation.completeness.policy_filtered_sections).toContain(
+        "timeline",
+      );
+    }
     const serialized = JSON.stringify(observation);
     expect(serialized).not.toContain("discard-redirect-");
     expect(serialized).not.toContain("outside.invalid");

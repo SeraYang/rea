@@ -520,9 +520,9 @@ class TimelineCapture {
     const destination = scopedUrl(rawUrl, this.allowedOrigins);
     const response = facts.redirect.response;
     const prior = scopeCdpResponse(response, this.allowedOrigins);
-    if (prior.scope === null)
+    if (prior.scope !== "approved")
       this.completeness.exclude("timeline", prior.reason);
-    else if (prior.scope === "approved" && !response.status.ok)
+    else if (!response.status.ok)
       this.completeness.exclude("timeline", "invalid_protocol_value");
     this.#add({
       type: "redirect",
