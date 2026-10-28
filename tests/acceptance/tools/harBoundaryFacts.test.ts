@@ -19,6 +19,7 @@ cliTest(
     const entry = fixture.log.entries[0];
     if (entry === undefined) throw new Error("fixture missing");
     const marker = "nested-extension-payload";
+    const scalarMarker = "scalar-extension-value";
     const path = join(root, "capture.har");
     await writeFile(
       path,
@@ -33,6 +34,13 @@ cliTest(
               request: { ...entry.request, reason: { payload: marker } },
               response: { ...entry.response, method: { payload: marker } },
             },
+            {
+              ...entry,
+              name: scalarMarker,
+              type: scalarMarker,
+              request: { ...entry.request, reason: scalarMarker },
+              response: { ...entry.response, method: scalarMarker },
+            },
           ],
         },
       }),
@@ -46,7 +54,7 @@ cliTest(
     for (const detail of ["preview", "complete"] as const) {
       const request = {
         source: { kind: "inline", evidence },
-        view: { kind: "capture", detail, offset: 0, limit: 1 },
+        view: { kind: "capture", detail, offset: 0, limit: 2 },
       };
       const requestPath = join(root, `${detail}.json`);
       await writeFile(requestPath, JSON.stringify(request));
@@ -62,6 +70,7 @@ cliTest(
       );
       if (detail === "preview") {
         expect(JSON.stringify(result)).not.toContain(marker);
+        expect(JSON.stringify(result)).not.toContain(scalarMarker);
         expect(result).toMatchObject({
           items: [
             {
@@ -74,9 +83,25 @@ cliTest(
                 response: { status: entry.response.status },
               },
             },
+            {},
           ],
         });
-      } else expect(JSON.stringify(result)).toContain(marker);
+      } else {
+        expect(JSON.stringify(result)).toContain(marker);
+        expect(result).toMatchObject({
+          items: [
+            {},
+            {
+              reported: {
+                name: scalarMarker,
+                type: scalarMarker,
+                request: { reason: scalarMarker },
+                response: { method: scalarMarker },
+              },
+            },
+          ],
+        });
+      }
     }
   },
 );
