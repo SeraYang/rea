@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { jsonValueSchema } from "../jsonValue.js";
 import {
   processScenarioSchema,
   processScenarioCommitment,
@@ -78,6 +79,75 @@ it("does not turn unresolved filesystem effects into equality or a definite chan
     filesystem: "unchanged",
     first_divergence: { status: "none" },
   });
+});
+
+it("preserves independently observed file changes alongside an unknown effect", () => {
+  const base = emptyCapture();
+  const link = {
+    path: "root_0:legacy-link",
+    type: "symlink" as const,
+    mode: 0o777,
+    size: 1,
+    sha256: null,
+    symlink_target: null,
+    symlink_target_hex: "ff",
+  };
+  const unknown = {
+    path: link.path,
+    status: "unknown" as const,
+    before: link,
+    after: link,
+    reason: "Target bytes were not retained.",
+  };
+  const make = (sha256: string) => {
+    const file = {
+      path: "root_0:known.txt",
+      type: "file" as const,
+      mode: 0o644,
+      size: 4,
+      sha256,
+      symlink_target: null,
+    };
+    const files = [link, file];
+    return {
+      ...base,
+      files_before: files,
+      files_after: files,
+      filesystem_effects: [unknown],
+      filesystem_checkpoints: base.filesystem_checkpoints.map((checkpoint) => ({
+        ...checkpoint,
+        files,
+        effects: checkpoint.name === "after_settlement" ? [unknown] : [],
+      })),
+    };
+  };
+  const left = make("a".repeat(64));
+  const right = make("b".repeat(64));
+  const traceSpecification = {
+    events: [
+      {
+        id: "before",
+        source: "filesystem" as const,
+        exact: jsonValueSchema.parse(left.filesystem_checkpoints[0]),
+        cardinality: { kind: "required" as const },
+      },
+    ],
+    language: {
+      kind: "finite_traces" as const,
+      variants: [{ id: "v", trace: ["before"] }],
+    },
+  };
+  for (const [a, b] of [
+    [left, right],
+    [right, left],
+  ] as const) {
+    for (const options of [undefined, { traceSpecification }])
+      expect(compareFullyObserved(a, b, options)).toMatchObject({
+        filesystem: "changed",
+        status: "changed",
+        first_divergence: { status: "unknown" },
+      });
+  }
 });
 
 it.each(PROCESS_COMPARISON_DIMENSIONS)(

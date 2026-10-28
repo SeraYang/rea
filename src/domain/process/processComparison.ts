@@ -170,6 +170,49 @@ const hasUnknownFilesystemEffects = (capture: ProcessCapture): boolean =>
     effects.some(({ status }) => status === "unknown"),
   );
 
+/** Compare only facts present on both sides; missing paths and unknown values
+ * cannot prove a change when filesystem effects are incomplete. */
+const hasKnownFilesystemDifference = (
+  left: ProcessCapture,
+  right: ProcessCapture,
+): boolean =>
+  left.filesystem_checkpoints.some((checkpoint) => {
+    const peer = right.filesystem_checkpoints.find(
+      ({ name }) => name === checkpoint.name,
+    );
+    if (peer === undefined) return false;
+    const files = new Map(peer.files.map((file) => [file.path, file]));
+    return checkpoint.files.some((file) => {
+      const other = files.get(file.path);
+      if (other === undefined) return false;
+      if (
+        file.type !== other.type ||
+        file.mode !== other.mode ||
+        file.size !== other.size
+      )
+        return true;
+      if (file.type === "file" && other.type === "file")
+        return (
+          file.sha256 !== null &&
+          other.sha256 !== null &&
+          file.sha256 !== other.sha256
+        );
+      if (file.type === "symlink" && other.type === "symlink") {
+        if (
+          file.symlink_target_hex !== undefined &&
+          other.symlink_target_hex !== undefined
+        )
+          return file.symlink_target_hex !== other.symlink_target_hex;
+        return (
+          file.symlink_target !== null &&
+          other.symlink_target !== null &&
+          file.symlink_target !== other.symlink_target
+        );
+      }
+      return false;
+    });
+  });
+
 type DivergenceDimension = Exclude<
   ProcessCaptureComparison["first_divergence"],
   { readonly status: "none" | "unknown" }
@@ -411,7 +454,8 @@ const compareDimensions = (
     hasUnknown(right, dimension) ||
     (dimension === "filesystem" &&
       (hasUnknownFilesystemEffects(left) ||
-        hasUnknownFilesystemEffects(right))) ||
+        hasUnknownFilesystemEffects(right)) &&
+      !hasKnownFilesystemDifference(left, right)) ||
     processSourceTruncated(left, source) ||
     processSourceTruncated(right, source)
       ? "unknown"
@@ -492,35 +536,36 @@ export const compareProcessCaptures = (
           reason:
             "Incomplete observations prevent locating the first divergence; unaffected dimensions retain their comparisons.",
         } as const)
-      : trace?.verdict === "equivalent" &&
-          deriveProcessComparisonStatus(
-            PROCESS_COMPARISON_DIMENSIONS.map(
-              (dimension) => dimensions[dimension],
-            ),
-          ) === "unchanged"
-        ? ({ status: "none" } as const)
-        : observedFirstDivergence.status === "found"
-          ? observedFirstDivergence
-          : trace?.verdict === "different" || trace?.verdict === "unknown"
-            ? ({
-                status: "unknown",
-                reason:
-                  "The declared trace differs or has insufficient journal evidence; per-source observations cannot locate its first cross-source divergence.",
-              } as const)
-            : !sameNormalization ||
-                left.residual_unknowns.length > 0 ||
-                right.residual_unknowns.length > 0 ||
-                hasUnknownFilesystemEffects(left) ||
-                hasUnknownFilesystemEffects(right)
+      : hasUnknownFilesystemEffects(left) || hasUnknownFilesystemEffects(right)
+        ? ({
+            status: "unknown",
+            reason:
+              "Unresolved filesystem effects prevent locating the first divergence, even when another change is observed.",
+          } as const)
+        : trace?.verdict === "equivalent" &&
+            deriveProcessComparisonStatus(
+              PROCESS_COMPARISON_DIMENSIONS.map(
+                (dimension) => dimensions[dimension],
+              ),
+            ) === "unchanged"
+          ? ({ status: "none" } as const)
+          : observedFirstDivergence.status === "found"
+            ? observedFirstDivergence
+            : trace?.verdict === "different" || trace?.verdict === "unknown"
               ? ({
                   status: "unknown",
                   reason:
-                    hasUnknownFilesystemEffects(left) ||
-                    hasUnknownFilesystemEffects(right)
-                      ? "Unresolved filesystem effects prevent proving that no divergence occurred."
-                      : "Residual unknowns prevent proving that no divergence occurred.",
+                    "The declared trace differs or has insufficient journal evidence; per-source observations cannot locate its first cross-source divergence.",
                 } as const)
-              : observedFirstDivergence;
+              : !sameNormalization ||
+                  left.residual_unknowns.length > 0 ||
+                  right.residual_unknowns.length > 0
+                ? ({
+                    status: "unknown",
+                    reason:
+                      "Residual unknowns prevent proving that no divergence occurred.",
+                  } as const)
+                : observedFirstDivergence;
   const observedStatus = deriveProcessComparisonStatus(
     PROCESS_COMPARISON_DIMENSIONS.map((dimension) => dimensions[dimension]),
   );
