@@ -448,3 +448,105 @@ it("does not join an empty document request identity to a later loading failure"
     }),
   );
 });
+
+const redirectCases = [
+  {
+    name: "missing URL",
+    response: (_origin: string) => ({ status: 302 }),
+    expected: (_origin: string) => ({ url: null, status: null, scope: null }),
+  },
+  {
+    name: "missing status",
+    response: (origin: string) => ({ url: `${origin}/prior` }),
+    expected: (origin: string) => ({
+      url: `${origin}/prior`,
+      status: null,
+      scope: "approved",
+    }),
+  },
+  {
+    name: "zero status",
+    response: (origin: string) => ({ url: `${origin}/prior`, status: 0 }),
+    expected: (origin: string) => ({
+      url: `${origin}/prior`,
+      status: 0,
+      scope: "approved",
+    }),
+  },
+  {
+    name: "outside origin",
+    response: (_origin: string) => ({
+      url: "https://outside.invalid/previous",
+      status: 302,
+    }),
+    expected: (_origin: string) => ({
+      url: null,
+      status: null,
+      scope: "outside_policy",
+    }),
+  },
+  {
+    name: "unsupported URL",
+    response: (_origin: string) => ({
+      url: "data:text/html,discard-redirect-body",
+      status: 302,
+    }),
+    expected: (_origin: string) => ({
+      url: null,
+      status: null,
+      scope: "unsupported",
+    }),
+  },
+  {
+    name: "credentials",
+    response: (origin: string) => ({
+      url:
+        origin.replace("http://", "http://user:discard-redirect-secret@") +
+        "/prior?token=visible",
+      status: 302,
+    }),
+    expected: (origin: string) => ({
+      url: `${origin}/prior?token=visible`,
+      status: 302,
+      scope: "approved",
+    }),
+  },
+];
+
+it.each(redirectCases)(
+  "preserves scoped redirect response facts with $name",
+  async ({ response, expected }) => {
+    const { browser, observation } = await observeDuringClockSampling(
+      (command, origin) => {
+        if (command.method !== "Performance.getMetrics") return undefined;
+        return [
+          {
+            method: "Network.requestWillBeSent",
+            sessionId: command.sessionId,
+            params: {
+              requestId: "redirect-context",
+              timestamp: 21,
+              type: "Document",
+              frameId: "frame-main",
+              request: { url: `${origin}/next`, method: "GET" },
+              redirectResponse: {
+                ...response(origin),
+                headers: { Authorization: "discard-redirect-header" },
+              },
+            },
+          },
+        ];
+      },
+    );
+    expect(observation.timeline).toContainEqual(
+      expect.objectContaining({
+        type: "redirect",
+        request_id: "redirect-context",
+        redirect_response: expected(browser.allowedOrigin),
+      }),
+    );
+    const serialized = JSON.stringify(observation);
+    expect(serialized).not.toContain("discard-redirect-");
+    expect(serialized).not.toContain("outside.invalid");
+  },
+);

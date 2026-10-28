@@ -400,7 +400,14 @@ contextual evidence with `timestamp: null`, accompanied by a limitation stating
 that it does not establish activity in the selected window. Main-frame scope
 enforcement still applies to contextual navigation events. Network redirect
 events retain their paired prior-hop response context when the timestamped
-next-request event falls inside the window. The pre-arm timeline buffer is bounded
+next-request event falls inside the window. A redirect row's optional
+`redirect_response` contains the prior response `url`, CDP-reported `status`,
+and `scope`. The URL has transport credentials removed; URL and status are
+withheld unless its origin is approved. Missing response URLs have null scope,
+and missing status remains null rather than zero. Historical rows may omit this
+field; omission does not establish that no prior response existed. Response
+headers and bodies are discarded. The row timestamp belongs to the next request,
+not an exact prior response time. The pre-arm timeline buffer is bounded
 by original CDP message bytes. If clock sampling completes after that budget is
 exhausted, the operation returns `payload_limit` instead of a partial window.
 Cancellation and clock-request failures retain their own outcomes. Session
