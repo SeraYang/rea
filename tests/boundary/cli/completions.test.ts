@@ -84,7 +84,9 @@ it("uses canonical global flag metadata and retains command options and enum hin
     "--json",
     "--full-output",
     "--help",
+    "--timings",
   ]);
+  expect(complete(["rea", "mcp", "doctor", "--t"])).toEqual(["--timings"]);
   expect(complete(["rea", "mcp", "doctor", "-h"])).toEqual(["-h"]);
   expect(complete(["rea", "--filter-output", "mcp", ""])).toEqual([
     "instructions",
@@ -223,7 +225,7 @@ printf 'doctor=%s\\n' "\${COMPREPLY[*]}"
     expect(result.stdout).toContain("mcp=add doctor\n");
     expect(result.stdout).toContain("format=toon json yaml md jsonl csv tsv\n");
     expect(result.stdout).toContain(
-      "doctor=--format --json --full-output --help\n",
+      "doctor=--format --json --full-output --help --timings\n",
     );
   },
 );
