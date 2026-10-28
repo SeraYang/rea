@@ -123,6 +123,65 @@ it("shares Bash registration across ordinary and protocol routes while retaining
   expect(ordinary(["completions", "bash", "--schema"], {})).toBe(false);
 });
 
+workspaceCliTest(
+  "explains zsh completion initialization in public help",
+  async ({ processes, workspace }) => {
+    const environment = {
+      ...process.env,
+      ...workspace.environment,
+      REA_LOG_LEVEL: "silent",
+      REA_TEST_NODE: process.execPath,
+      REA_TEST_DISPATCHER: resolve("scripts/rea.mjs"),
+    };
+    for (const arguments_ of [
+      ["completions", "--help"],
+      ["--json", "completions", "--help"],
+      ["completions"],
+    ]) {
+      const help = await processes.run(
+        process.execPath,
+        [resolve("scripts/rea.mjs"), ...arguments_],
+        { env: environment },
+      );
+      expect(help.exitCode, help.stderr).toBe(0);
+      expect(help.stdout).toContain(
+        "initialize completion with `autoload -Uz compinit; compinit` before evaluating the zsh hook",
+      );
+    }
+  },
+);
+
+workspaceCliTest.skipIf(process.platform !== "darwin")(
+  "registers zsh completion after compinit",
+  async ({ processes, workspace }) => {
+    const environment = {
+      ...process.env,
+      ...workspace.environment,
+      REA_LOG_LEVEL: "silent",
+      REA_TEST_NODE: process.execPath,
+      REA_TEST_DISPATCHER: resolve("scripts/rea.mjs"),
+    };
+    const result = await processes.run(
+      "zsh",
+      [
+        "-f",
+        "-c",
+        `
+rea() { "$REA_TEST_NODE" "$REA_TEST_DISPATCHER" "$@"; }
+autoload -Uz compinit
+compinit -i -D
+eval "$(rea completions zsh)" || exit
+print -r -- "association=\${+_comps[rea]}"
+`,
+      ],
+      { env: environment },
+    );
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("association=1\n");
+  },
+);
+
 workspaceCliTest.skipIf(process.platform === "win32")(
   "runs generated Bash completion with valid MCP scope and incomplete global values through the public launcher",
   async ({ processes, workspace }) => {

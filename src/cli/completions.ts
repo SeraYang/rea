@@ -18,6 +18,43 @@ type CompletionCli = Parameters<typeof Cli.toCommands.get>[0];
 type ServeOptions = NonNullable<Parameters<CompletionCli["serve"]>[1]>;
 const ROOT_FLAGS = new Set(["--mcp", "--update", "--version"]);
 
+/** Supplement Incur's built-in setup instructions without replacing its help. */
+export const completionHelpNote = (
+  arguments_: readonly string[],
+): string | undefined => {
+  const split = splitIncurBuiltinArguments(arguments_);
+  const words =
+    split.command[0] === "rea" ? split.command.slice(1) : split.command;
+  if (words[0] !== "completions") return undefined;
+  const rest = words.slice(1);
+  if (
+    rest.length > 1 ||
+    (rest.length === 1 &&
+      !CLI_COMPLETION_SHELLS.includes(
+        rest[0] as (typeof CLI_COMPLETION_SHELLS)[number],
+      ))
+  )
+    return undefined;
+  const values = new Set(split.outputValues.map(({ index }) => index));
+  const flags = arguments_.filter((_, index) => !values.has(index));
+  if (
+    flags.some((word) =>
+      [
+        "--schema",
+        "--llms",
+        "--llms-full",
+        "--mcp",
+        "--update",
+        "--version",
+      ].includes(word),
+    )
+  )
+    return undefined;
+  if (rest.length > 0 && !flags.includes("--help") && !flags.includes("-h"))
+    return undefined;
+  return "Zsh: initialize completion with `autoload -Uz compinit; compinit` before evaluating the zsh hook. If your shell already runs compinit, place the hook after it.\n";
+};
+
 const standardGlobals = (root: boolean): z.ZodObject =>
   z.object(
     Object.fromEntries([
