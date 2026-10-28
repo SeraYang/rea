@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createJebAnalysisProvider } from "../composition/jeb.js";
 import { JebProvider } from "./JebProvider.js";
+import { decodeJebToolResult } from "./JebMcpConnection.js";
 import type {
   JebMcpConnection,
   JebMcpConnectionTimeouts,
@@ -156,6 +157,59 @@ describe("JebProvider live availability", () => {
       supportedOperations: ["inspect_jeb_client"],
     });
     expect(connection.calls).toHaveLength(2);
+  });
+});
+
+describe("JebProvider endpoint diagnostics", () => {
+  it("retains the selected endpoint on malformed MCP results without replacing the protocol failure", async () => {
+    let failure: unknown;
+    try {
+      decodeJebToolResult({ content: [] });
+    } catch (cause) {
+      failure = cause;
+    }
+    if (!(failure instanceof AnalysisProtocolError))
+      throw new Error("Expected a protocol failure");
+    failure.retainDiagnostics({ phase: "decode" });
+    const connection = scriptedConnection({ get_client_information: failure });
+    const provider = providerWith(connection);
+    try {
+      const result = await provider.execute({
+        operation: "inspect_jeb_client",
+        input: {},
+      });
+      if (result.ok) throw new Error("Expected a malformed response failure");
+      expect(result.error).toBe(failure);
+      expect(result.error.diagnostics).toEqual({
+        phase: "decode",
+        endpoint: "http://127.0.0.1:8425/mcp",
+      });
+    } finally {
+      await provider.close();
+    }
+  });
+
+  it("retains the selected endpoint when cancelled before execution", async () => {
+    const connection = scriptedConnection({});
+    const provider = providerWith(connection);
+    const controller = new AbortController();
+    const reason = new Error("caller stopped");
+    controller.abort(reason);
+    try {
+      const result = await provider.execute(
+        { operation: "inspect_jeb_client", input: {} },
+        { signal: controller.signal },
+      );
+      if (result.ok) throw new Error("Expected cancellation");
+      expect(result.error).toBeInstanceOf(AnalysisCancelledError);
+      expect(result.error.cause).toBe(reason);
+      expect(result.error.diagnostics).toEqual({
+        endpoint: "http://127.0.0.1:8425/mcp",
+      });
+      expect(connection.calls).toEqual([]);
+    } finally {
+      await provider.close();
+    }
   });
 });
 

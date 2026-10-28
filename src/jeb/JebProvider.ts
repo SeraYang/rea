@@ -251,6 +251,7 @@ export class JebProvider implements JebAnalysisPort {
       return err(
         new AnalysisCancelledError(request.operation, {
           cause: options.signal.reason,
+          diagnostics: { endpoint: this.#selectedEndpoint },
         }),
       );
     try {
@@ -574,7 +575,8 @@ export class JebProvider implements JebAnalysisPort {
         .bindCleanupDependencies([cause])
         .bindCleanupResourceOwner(cause);
     }
-    if (cause instanceof AnalysisError) return cause;
+    if (cause instanceof AnalysisError)
+      return cause.retainDiagnostics({ endpoint: this.#selectedEndpoint });
     if (cause instanceof z.ZodError)
       return new AnalysisProtocolError(
         "JEB omitted or malformed required observation fields",
