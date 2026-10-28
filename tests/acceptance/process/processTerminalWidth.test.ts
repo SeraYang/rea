@@ -54,7 +54,7 @@ cliTest(
 );
 
 cliTest.skipIf(CAPTURE_SKIP_REASON)(
-  "retains the requested two-column screen through capture and resize",
+  "retains the requested initial two-column screen",
   async ({ cli }) => {
     const root = await createTestTempDirectory("rea-process-width-control-");
     const path = join(root, "scenario.json");
@@ -64,7 +64,6 @@ cliTest.skipIf(CAPTURE_SKIP_REASON)(
         executable: process.execPath,
         arguments: ["-e", "process.stdout.write('ab');setTimeout(()=>{}, 100)"],
         terminal: { columns: 2, rows: 2, scrollback: 0 },
-        events: [{ type: "resize", at_ms: 20, columns: 2, rows: 2 }],
         timeout_ms: 5_000,
       }),
     );
@@ -77,6 +76,37 @@ cliTest.skipIf(CAPTURE_SKIP_REASON)(
     );
     expect(capture.rendered_frames.length).toBeGreaterThan(0);
     expect(capture.rendered_frames.every((frame) => frame.columns === 2)).toBe(
+      true,
+    );
+  },
+);
+
+cliTest.skipIf(CAPTURE_SKIP_REASON)(
+  "resizes a wider screen to two columns",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-process-width-resize-");
+    const path = join(root, "scenario.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        executable: process.execPath,
+        arguments: [
+          "-e",
+          "setTimeout(() => process.stdout.write('ab'), 100); setTimeout(() => {}, 180)",
+        ],
+        terminal: { columns: 3, rows: 2, scrollback: 0 },
+        events: [{ type: "resize", at_ms: 20, columns: 2, rows: 2 }],
+        timeout_ms: 5_000,
+      }),
+    );
+    const result = await cli.run({
+      arguments: ["capture-process", path, "--json"],
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    const capture = parseProcessCapture(
+      parseEvidence(result.json).normalized_result,
+    );
+    expect(capture.rendered_frames.some((frame) => frame.columns === 2)).toBe(
       true,
     );
   },
