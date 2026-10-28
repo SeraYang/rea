@@ -185,13 +185,15 @@ describe("CdpBrowserProvider: redirect errors: preserving authorized predecessor
 });
 
 it.each([
-  { phase: "redirect", malformed: true },
-  { phase: "redirect", malformed: false },
-  { phase: "response", malformed: true },
-  { phase: "response", malformed: false },
+  { phase: "redirect", malformed: true, orphan: true },
+  { phase: "redirect", malformed: false, orphan: true },
+  { phase: "redirect", malformed: true, orphan: false },
+  { phase: "redirect", malformed: false, orphan: false },
+  { phase: "response", malformed: true, orphan: false },
+  { phase: "response", malformed: false, orphan: false },
 ])(
-  "retains $phase facts with missing versus malformed status (malformed=$malformed)",
-  async ({ phase, malformed }) => {
+  "retains $phase facts with missing versus malformed status (orphan=$orphan, malformed=$malformed)",
+  async ({ phase, malformed, orphan }) => {
     const { browser, inspection } = await inspectNetwork({
       commandEvents(command, origin) {
         if (command.method !== "Network.enable") return undefined;
@@ -209,11 +211,15 @@ it.each([
           ...(malformed ? { status: "302" } : {}),
         };
         return [
-          {
-            method: "Network.requestWillBeSent",
-            sessionId: command.sessionId,
-            params: request(`${origin}/prior`),
-          },
+          ...(orphan
+            ? []
+            : [
+                {
+                  method: "Network.requestWillBeSent",
+                  sessionId: command.sessionId,
+                  params: request(`${origin}/prior`),
+                },
+              ]),
           phase === "redirect"
             ? {
                 method: "Network.requestWillBeSent",
@@ -243,7 +249,12 @@ it.each([
     });
     expect(inspection.network.requests).toHaveLength(1);
     const retained = inspection.network.requests[0];
-    if (phase === "redirect")
+    if (orphan)
+      expect(retained).toMatchObject({
+        url: `${browser.allowedOrigin}/final`,
+        redirects: [],
+      });
+    else if (phase === "redirect")
       expect(retained?.redirects).toContainEqual(
         expect.objectContaining({
           response_url: `${browser.allowedOrigin}/prior`,
@@ -258,6 +269,7 @@ it.each([
     const invalid = expect.objectContaining({
       section: "network_requests",
       reason: "invalid_protocol_value",
+      count: 1,
     });
     if (malformed)
       expect(inspection.completeness.excluded).toContainEqual(invalid);

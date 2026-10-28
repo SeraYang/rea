@@ -287,6 +287,8 @@ export const handleRequestWillBeSent = (
       redirectResponse,
       state.allowedOrigins,
     );
+    if (responseUrl.scope === "approved" && !redirectResponse.status.ok)
+      state.completeness.exclude("network_requests", "invalid_protocol_value");
     if (previous === undefined) {
       if (responseUrl.scope !== "approved")
         state.completeness.exclude("network_requests", responseUrl.reason);
@@ -304,11 +306,6 @@ export const handleRequestWillBeSent = (
       state.networkRequestTimestamps.delete(requestId);
       return;
     } else {
-      if (!redirectResponse.status.ok)
-        state.completeness.exclude(
-          "network_requests",
-          "invalid_protocol_value",
-        );
       const encodedDataLength = redirectResponse.encodedDataLength;
       if (encodedDataLength === undefined || encodedDataLength < 0)
         state.completeness.exclude(
