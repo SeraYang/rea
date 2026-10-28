@@ -93,6 +93,8 @@ cliTest.for(["CLI", "stdio MCP"] as const)(
         return row;
       }),
     };
-    expect(webObservationSessionSchema.parse(historical)).toStrictEqual(historical);
+    expect(webObservationSessionSchema.parse(historical)).toStrictEqual(
+      historical,
+    );
   },
 );

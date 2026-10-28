@@ -39,6 +39,7 @@ import { cdpTargetEventMatches } from "./CdpTargetEvents.js";
 
 import {
   readCdpRequestWillBeSent,
+  scopeCdpResponse,
   readCdpLoadingFailed,
   readCdpLoadingFinished,
   type CdpRequestWillBeSentFacts,
@@ -518,10 +519,9 @@ class TimelineCapture {
     const rawUrl = facts.request?.url;
     const destination = scopedUrl(rawUrl, this.allowedOrigins);
     const response = facts.redirect.response;
-    const prior =
-      response.url === undefined
-        ? undefined
-        : scopedUrl(response.url, this.allowedOrigins);
+    const prior = scopeCdpResponse(response, this.allowedOrigins);
+    if (prior.scope === null)
+      this.completeness.exclude("timeline", prior.reason);
     this.#add({
       type: "redirect",
       params: facts.source ?? {},
@@ -532,9 +532,9 @@ class TimelineCapture {
       requestId: facts.requestId,
       detail: null,
       redirectResponse: {
-        url: prior?.scope === "approved" ? prior.url : null,
-        status: prior?.scope === "approved" ? (response.status ?? null) : null,
-        scope: prior?.scope ?? null,
+        url: prior.scope === "approved" ? prior.url.url : null,
+        status: prior.scope === "approved" ? (response.status ?? null) : null,
+        scope: prior.scope,
       },
     });
     if (!this.#hasObservedUrl(rawUrl)) return;

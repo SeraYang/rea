@@ -451,6 +451,17 @@ it("does not join an empty document request identity to a later loading failure"
 
 const redirectCases = [
   {
+    name: "malformed URL",
+    response: (_origin: string) => ({ url: "http://%", status: 302 }),
+    expected: (_origin: string) => ({ url: null, status: null, scope: null }),
+  },
+  {
+    name: "empty URL",
+    response: (_origin: string) => ({ url: "", status: 302 }),
+    expected: (_origin: string) => ({ url: null, status: null, scope: null }),
+  },
+
+  {
     name: "missing URL",
     response: (_origin: string) => ({ status: 302 }),
     expected: (_origin: string) => ({ url: null, status: null, scope: null }),
@@ -545,6 +556,13 @@ it.each(redirectCases)(
         redirect_response: expected(browser.allowedOrigin),
       }),
     );
+    if (expected(browser.allowedOrigin).scope === null)
+      expect(observation.completeness.excluded).toContainEqual(
+        expect.objectContaining({
+          section: "timeline",
+          reason: "invalid_protocol_value",
+        }),
+      );
     const serialized = JSON.stringify(observation);
     expect(serialized).not.toContain("discard-redirect-");
     expect(serialized).not.toContain("outside.invalid");
