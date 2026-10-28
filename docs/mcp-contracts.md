@@ -38,7 +38,9 @@ the session cannot resolve is refused with `evidence_integrity_mismatch` and
 `details.reason: "missing"`.
 
 `compare_artifacts` can also resolve an artifact summary to its exact retained
-parent in the session. Supported historical summaries keep their original
+parent in the session, or from the authenticated bundle containing a file-selected
+summary. File-local records take precedence over the session lookup. Unrelated
+records are not retained by the file resolver. Supported historical summaries keep their original
 Evidence identity and omissions; a missing or mismatched parent is rejected.
 
 `analyze_function` does not deliver its complete record by default. Without

@@ -14,6 +14,16 @@ import {
 /** Read-only lookup supplied by the current investigation's Evidence ledger. */
 export type EvidenceLookup = (evidenceId: string) => Evidence | undefined;
 
+/** Normalize each selected record using its file context and the current ledger. */
+export interface EvidenceSourceResolutionOptions extends EvidenceFileReadOptions {
+  readonly operation: string;
+  readonly resolveEvidence?: (
+    evidence: Evidence,
+    lookup: EvidenceLookup | undefined,
+    side: "left" | "right",
+  ) => Result<Evidence, AnalysisError>;
+}
+
 /** Resolve an exact reference without selecting a target or running analysis. */
 export const resolveEvidenceInput = (
   input: EvidenceInput,
@@ -86,7 +96,7 @@ export const resolvePairedEvidenceSources = async <
 >(
   input: T,
   lookup: EvidenceLookup | undefined,
-  options: EvidenceFileReadOptions & { readonly operation: string },
+  options: EvidenceSourceResolutionOptions,
 ): Promise<
   Result<
     Omit<T, "left" | "right"> & {
@@ -112,12 +122,21 @@ const resolveEvidenceSource = async (
   input: EvidenceSourceInput,
   side: "left" | "right",
   lookup: EvidenceLookup | undefined,
-  options: EvidenceFileReadOptions & { readonly operation: string },
+  options: EvidenceSourceResolutionOptions,
 ): Promise<Result<Evidence, AnalysisError>> => {
   if ("kind" in input && input.kind === "evidence-file")
     return readEvidenceFileSource(input.path, options, input.evidence_id, {
       operation: options.operation,
       path: [side],
+      resolveSelected: (selected, fileLookup) =>
+        options.resolveEvidence?.(
+          selected,
+          (id) => fileLookup(id) ?? lookup?.(id),
+          side,
+        ) ?? ok(selected),
     });
-  return resolveEvidenceInput(input, lookup);
+  const selected = resolveEvidenceInput(input, lookup);
+  return selected.ok
+    ? (options.resolveEvidence?.(selected.value, lookup, side) ?? selected)
+    : selected;
 };
