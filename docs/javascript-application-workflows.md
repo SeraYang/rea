@@ -288,7 +288,9 @@ queries match that field. Call-site nodes also retain direct scalar arguments in
 `properties.arguments`, with source argument indexes; literal queries can start
 at those call sites. These are syntactic facts, not runtime values, and an index
 after a spread is not necessarily the runtime argument position. Nonliteral
-arguments and values not representable in JSON are omitted. String labels use
+arguments and values not representable in JSON are omitted. The primitive byte
+bound and the worker transfer record ceiling can also omit direct values; the
+call-site unknown reports the applicable limit. String labels use
 `string literal` when that is
 shorter than the complete JSON value. A literal's `identity.role_key` commits
 its canonical JSON value as `value-sha256:<digest>` when the digest key is

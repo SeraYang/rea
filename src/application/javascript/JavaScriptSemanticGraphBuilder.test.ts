@@ -68,6 +68,60 @@ it("reports the primitive byte bound when a direct argument is too large", () =>
   const call = graph.nodes.find(({ kind }) => kind === "call-site");
   expect(call?.properties.arguments).toBeUndefined();
   expect(graph.coverage.status).not.toBe("complete");
+  const unknown = graph.unknowns.find(
+    (entry) =>
+      entry.node_id === call?.node_id && entry.reason === "resource-limit",
+  );
+  expect(unknown?.detail).toMatch(/primitive string-byte budget exceeded/i);
+  expect(
+    graph.evidence_contexts.find(
+      (entry) => entry.context_id === unknown?.evidence.context_id,
+    ),
+  ).toMatchObject({
+    coverage: {
+      limits: expect.arrayContaining([
+        expect.objectContaining({
+          name: "javascript_semantic_primitive_bytes",
+        }),
+      ]),
+    },
+  });
+});
+
+it("keeps a large call's graph within the worker record limit and reports omitted arguments", () => {
+  const value = JSON.stringify("x".repeat(140_000));
+  const source = `rpc(${Array.from({ length: 64 }, () => value).join(",")});`;
+  const graph = graphFor(source);
+  const call = graph.nodes.find(({ kind }) => kind === "call-site");
+  if (call === undefined) throw new Error("Expected call site");
+  const values = call.properties.arguments;
+  expect(Array.isArray(values)).toBe(true);
+  if (!Array.isArray(values)) throw new Error("Expected retained arguments");
+  expect(values.length).toBeGreaterThan(0);
+  expect(values.length).toBeLessThan(64);
+  expect(
+    Buffer.byteLength(`${JSON.stringify({ kind: "node", value: call })}\n`),
+  ).toBeLessThanOrEqual(8 * 1024 * 1024);
+  const unknown = graph.unknowns.find(
+    (entry) =>
+      entry.node_id === call.node_id &&
+      entry.detail.includes("worker transfer record ceiling"),
+  );
+  expect(unknown).toMatchObject({ reason: "resource-limit" });
+  expect(
+    graph.evidence_contexts.find(
+      (entry) => entry.context_id === unknown?.evidence.context_id,
+    ),
+  ).toMatchObject({
+    coverage: {
+      limits: expect.arrayContaining([
+        expect.objectContaining({
+          name: "javascript_analysis_transfer_record_bytes",
+          value: 8 * 1024 * 1024,
+        }),
+      ]),
+    },
+  });
 });
 
 it("projects bounded alias selection as a resource-limit unknown", () => {

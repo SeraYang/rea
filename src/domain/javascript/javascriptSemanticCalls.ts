@@ -12,12 +12,12 @@ import type {
 import { semanticIdentifierRole } from "./javascriptSemanticProjection.js";
 import { createSemanticCallableStack } from "./javascriptSemanticCallableStack.js";
 import {
+  readExactJavaScriptLiteral,
   semanticStaticPropertyKey,
   unwrapJavaScriptExpression,
 } from "./javascriptAstValues.js";
 import {
   resolveSemanticBindingState,
-  isUnshadowedGlobal,
   type JavaScriptSemanticAnalysisState,
   type JavaScriptSemanticBindingState,
 } from "./javascriptSemanticState.js";
@@ -235,31 +235,20 @@ const retainedArguments = (
 const directLiteral = (
   node: t.Node,
   state: JavaScriptSemanticAnalysisState,
-): { readonly literal?: string | number | boolean | null } => {
-  const retain = (value: string | number | boolean | null) => {
-    const parsed = semanticPrimitiveSet([value]);
-    if (parsed.status === "literal") return { literal: parsed.value };
-    if (parsed.status === "unknown" && parsed.resourceLimit !== undefined)
-      state.valueResourceLimits.add(parsed.resourceLimit);
-    return {};
-  };
-  if (t.isStringLiteral(node) || t.isBooleanLiteral(node))
-    return retain(node.value);
-  if (t.isNullLiteral(node)) return retain(null);
-  if (t.isNumericLiteral(node) && Number.isFinite(node.value))
-    return retain(node.value);
+): {
+  readonly literal?: string | number | boolean | null;
+  readonly literalResourceLimit?: "primitive-bytes";
+} => {
+  const literal = readExactJavaScriptLiteral(node);
+  if (!literal.found) return {};
+  const parsed = semanticPrimitiveSet([literal.value]);
+  if (parsed.status === "literal") return { literal: parsed.value };
   if (
-    t.isUnaryExpression(node) &&
-    (node.operator === "-" || node.operator === "+") &&
-    t.isNumericLiteral(node.argument)
+    parsed.status === "unknown" &&
+    parsed.resourceLimit === "primitive-bytes"
   ) {
-    const value =
-      node.operator === "-" ? -node.argument.value : node.argument.value;
-    if (Number.isFinite(value) && !Object.is(value, -0)) return retain(value);
-  }
-  if (t.isTemplateLiteral(node) && node.expressions.length === 0) {
-    const value = node.quasis[0]?.value.cooked;
-    if (typeof value === "string") return retain(value);
+    state.valueResourceLimits.add(parsed.resourceLimit);
+    return { literalResourceLimit: parsed.resourceLimit };
   }
   return {};
 };

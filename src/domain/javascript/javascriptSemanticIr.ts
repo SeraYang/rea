@@ -140,6 +140,8 @@ export interface JavaScriptSemanticCallArgument {
   readonly spread: boolean;
   /** Direct scalar syntax, before runtime evaluation; omitted for other expressions. */
   readonly literal?: string | number | boolean | null;
+  /** A direct literal was omitted under a semantic resource bound. */
+  readonly literalResourceLimit?: "primitive-bytes";
 }
 
 /** One positional argument that may initialize one local parameter binding. */
