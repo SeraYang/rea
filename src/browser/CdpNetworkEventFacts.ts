@@ -4,6 +4,7 @@ import {
   type SanitizedBrowserUrl,
 } from "../domain/browserObservation.js";
 import { z } from "zod";
+import { err, ok, type Result } from "../domain/result.js";
 import {
   cdpStringValue,
   numberValue,
@@ -33,7 +34,10 @@ export const runtimeRequestSchema = z.object({
 export interface CdpResponseFacts {
   readonly source: UnknownRecord;
   readonly url: BrowserUrlObservation | undefined;
-  readonly status: number | undefined;
+  readonly status: Result<
+    number | null,
+    { readonly _tag: "InvalidCdpResponseStatus" }
+  >;
   readonly mimeType: string | undefined;
   readonly encodedDataLength: number | undefined;
   readonly headers: unknown;
@@ -47,11 +51,20 @@ export const readCdpResponseFacts = (
   return {
     source,
     url: url === undefined ? undefined : observeBrowserUrl(url),
-    status: numberValue(source.status),
+    status: readResponseStatus(source.status),
     mimeType: cdpStringValue(source.mimeType),
     encodedDataLength: numberValue(source.encodedDataLength),
     headers: source.headers,
   };
+};
+
+/** Omission is unknown; a supplied non-number is a protocol failure. */
+const readResponseStatus = (value: unknown): CdpResponseFacts["status"] => {
+  if (value === undefined) return ok(null);
+  const status = numberValue(value);
+  return status === undefined
+    ? err({ _tag: "InvalidCdpResponseStatus" })
+    : ok(status);
 };
 
 type ScopedCdpResponse =

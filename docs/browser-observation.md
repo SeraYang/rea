@@ -406,7 +406,8 @@ and `scope`. The URL has transport credentials removed; URL and status are
 withheld unless its origin is approved. Missing or malformed response URLs have
 null scope and add `invalid_protocol_value` timeline coverage; a valid URL with an
 unsupported protocol has `unsupported` scope. Missing status remains null rather
-than zero. Historical rows may omit this
+than zero. A supplied non-numeric status is also null and records
+`invalid_protocol_value` coverage; the other valid response facts remain available. Historical rows may omit this
 field; omission does not establish that no prior response existed. Response
 headers and bodies are discarded. The row timestamp belongs to the next request,
 not an exact prior response time. The pre-arm timeline buffer is bounded

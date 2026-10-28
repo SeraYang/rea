@@ -183,3 +183,84 @@ describe("CdpBrowserProvider: redirect errors: preserving authorized predecessor
     expect(output).not.toContain("header-secret");
   });
 });
+
+it.each([
+  { phase: "redirect", malformed: true },
+  { phase: "redirect", malformed: false },
+  { phase: "response", malformed: true },
+  { phase: "response", malformed: false },
+])(
+  "retains $phase facts with missing versus malformed status (malformed=$malformed)",
+  async ({ phase, malformed }) => {
+    const { browser, inspection } = await inspectNetwork({
+      commandEvents(command, origin) {
+        if (command.method !== "Network.enable") return undefined;
+        const request = (url: string) => ({
+          requestId: "status-request",
+          timestamp: 1,
+          type: "Fetch",
+          request: { url, method: "GET" },
+          initiator: { type: "other" },
+        });
+        const response = {
+          url: `${origin}/prior`,
+          mimeType: "text/plain",
+          encodedDataLength: 0,
+          ...(malformed ? { status: "302" } : {}),
+        };
+        return [
+          {
+            method: "Network.requestWillBeSent",
+            sessionId: command.sessionId,
+            params: request(`${origin}/prior`),
+          },
+          phase === "redirect"
+            ? {
+                method: "Network.requestWillBeSent",
+                sessionId: command.sessionId,
+                params: {
+                  ...request(`${origin}/final`),
+                  timestamp: 2,
+                  redirectResponse: response,
+                },
+              }
+            : {
+                method: "Network.responseReceived",
+                sessionId: command.sessionId,
+                params: { requestId: "status-request", response },
+              },
+          {
+            method: "Network.loadingFinished",
+            sessionId: command.sessionId,
+            params: {
+              requestId: "status-request",
+              timestamp: 3,
+              encodedDataLength: 0,
+            },
+          },
+        ];
+      },
+    });
+    expect(inspection.network.requests).toHaveLength(1);
+    const retained = inspection.network.requests[0];
+    if (phase === "redirect")
+      expect(retained?.redirects).toContainEqual(
+        expect.objectContaining({
+          response_url: `${browser.allowedOrigin}/prior`,
+          status: null,
+        }),
+      );
+    else
+      expect(retained).toMatchObject({
+        url: `${browser.allowedOrigin}/prior`,
+        status: null,
+      });
+    const invalid = expect.objectContaining({
+      section: "network_requests",
+      reason: "invalid_protocol_value",
+    });
+    if (malformed)
+      expect(inspection.completeness.excluded).toContainEqual(invalid);
+    else expect(inspection.completeness.excluded).not.toContainEqual(invalid);
+  },
+);

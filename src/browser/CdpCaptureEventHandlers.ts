@@ -304,6 +304,11 @@ export const handleRequestWillBeSent = (
       state.networkRequestTimestamps.delete(requestId);
       return;
     } else {
+      if (!redirectResponse.status.ok)
+        state.completeness.exclude(
+          "network_requests",
+          "invalid_protocol_value",
+        );
       const encodedDataLength = redirectResponse.encodedDataLength;
       if (encodedDataLength === undefined || encodedDataLength < 0)
         state.completeness.exclude(
@@ -315,7 +320,9 @@ export const handleRequestWillBeSent = (
         response_url: responseUrl.url.url,
         method: previous.method,
         resource_type: previous.resource_type,
-        status: redirectResponse.status ?? null,
+        status: redirectResponse.status.ok
+          ? redirectResponse.status.value
+          : null,
         mime_type: redirectResponse.mimeType ?? null,
         encoded_data_length:
           encodedDataLength === undefined || encodedDataLength < 0
@@ -411,9 +418,11 @@ export const handleResponseReceived = (
     return;
   }
   const { url: sanitized, response } = scoped;
+  if (!response.status.ok)
+    state.completeness.exclude("network_requests", "invalid_protocol_value");
   state.network.set(requestId, {
     ...current,
-    status: response.status ?? null,
+    status: response.status.ok ? response.status.value : null,
     mime_type: response.mimeType ?? null,
   });
   const metadata = safeResponseMetadata(

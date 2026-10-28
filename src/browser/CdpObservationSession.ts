@@ -522,6 +522,8 @@ class TimelineCapture {
     const prior = scopeCdpResponse(response, this.allowedOrigins);
     if (prior.scope === null)
       this.completeness.exclude("timeline", prior.reason);
+    else if (prior.scope === "approved" && !response.status.ok)
+      this.completeness.exclude("timeline", "invalid_protocol_value");
     this.#add({
       type: "redirect",
       params: facts.source ?? {},
@@ -533,7 +535,10 @@ class TimelineCapture {
       detail: null,
       redirectResponse: {
         url: prior.scope === "approved" ? prior.url.url : null,
-        status: prior.scope === "approved" ? (response.status ?? null) : null,
+        status:
+          prior.scope === "approved" && response.status.ok
+            ? response.status.value
+            : null,
         scope: prior.scope,
       },
     });

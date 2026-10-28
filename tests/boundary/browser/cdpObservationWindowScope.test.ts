@@ -450,6 +450,23 @@ it("does not join an empty document request identity to a later loading failure"
 });
 
 const redirectCases = [
+  ...(
+    [
+      ["string status", "302"],
+      ["null status", null],
+      ["boolean status", false],
+      ["object status", {}],
+    ] as const
+  ).map(([name, status]) => ({
+    name,
+    invalidStatus: true,
+    response: (origin: string) => ({ url: `${origin}/prior`, status }),
+    expected: (origin: string) => ({
+      url: `${origin}/prior`,
+      status: null,
+      scope: "approved",
+    }),
+  })),
   {
     name: "malformed URL",
     response: (_origin: string) => ({ url: "http://%", status: 302 }),
@@ -526,7 +543,8 @@ const redirectCases = [
 
 it.each(redirectCases)(
   "preserves scoped redirect response facts with $name",
-  async ({ response, expected }) => {
+  async (testCase) => {
+    const { response, expected } = testCase;
     const { browser, observation } = await observeDuringClockSampling(
       (command, origin) => {
         if (command.method !== "Performance.getMetrics") return undefined;
@@ -556,8 +574,18 @@ it.each(redirectCases)(
         redirect_response: expected(browser.allowedOrigin),
       }),
     );
-    if (expected(browser.allowedOrigin).scope === null)
+    if (
+      expected(browser.allowedOrigin).scope === null ||
+      "invalidStatus" in testCase
+    )
       expect(observation.completeness.excluded).toContainEqual(
+        expect.objectContaining({
+          section: "timeline",
+          reason: "invalid_protocol_value",
+        }),
+      );
+    else
+      expect(observation.completeness.excluded).not.toContainEqual(
         expect.objectContaining({
           section: "timeline",
           reason: "invalid_protocol_value",
