@@ -18,7 +18,7 @@ import {
 } from "./processTraceDimensionProjection.js";
 
 import {
-  compareProcessTraces,
+  evaluateProcessTraceComparison,
   processTraceOutcomesDiffer,
 } from "./processTraceComparison.js";
 const OPERATION = "compare_process_captures";
@@ -163,6 +163,12 @@ const hasUnknown = (
   capture: ProcessCapture,
   scope: ProcessCapture["residual_unknowns"][number]["scope"],
 ): boolean => capture.residual_unknowns.some((item) => item.scope === scope);
+
+const hasUnknownFilesystemEffects = (capture: ProcessCapture): boolean =>
+  capture.filesystem_effects.some(({ status }) => status === "unknown") ||
+  capture.filesystem_checkpoints.some(({ effects }) =>
+    effects.some(({ status }) => status === "unknown"),
+  );
 
 type DivergenceDimension = Exclude<
   ProcessCaptureComparison["first_divergence"],
@@ -318,9 +324,10 @@ const LOCATION_SOURCES = {
 const applyTraceVerdict = (
   dimensions: ComparisonDimensions,
   specification: ProcessTraceSpecification,
-  trace: ReturnType<typeof compareProcessTraces>,
+  evaluation: ReturnType<typeof evaluateProcessTraceComparison>,
   captures: readonly [left: ProcessCapture, right: ProcessCapture],
 ): ComparisonDimensions => {
+  const { result: trace, diagnostics } = evaluation;
   const traceShowsDifference = processTraceOutcomesDiffer(trace);
   const traceStatus =
     trace.verdict === "unknown"
@@ -333,14 +340,16 @@ const applyTraceVerdict = (
   // A different verdict names the failing events and observations; attribute
   // it only to their dimensions; unrelated comparisons keep their own status,
   // including unknown coverage and independently observed additions/removals.
-  const diagnosticSources = new Set<ProcessObservationSource>([
-    ...specification.events
-      .filter(({ id }) => trace.diagnostic?.event_ids.includes(id) === true)
-      .map(({ source }) => source),
-    ...(trace.diagnostic?.locations ?? []).map(
-      ({ collection }) => LOCATION_SOURCES[collection],
-    ),
-  ]);
+  const diagnosticSources = new Set<ProcessObservationSource>(
+    diagnostics.flatMap((diagnostic) => [
+      ...specification.events
+        .filter(({ id }) => diagnostic.event_ids.includes(id))
+        .map(({ source }) => source),
+      ...diagnostic.locations.map(
+        ({ collection }) => LOCATION_SOURCES[collection],
+      ),
+    ]),
+  );
   const attributed =
     diagnosticSources.size > 0
       ? dimensionsForTraceSources(diagnosticSources)
@@ -350,6 +359,11 @@ const applyTraceVerdict = (
   ): ComparisonStatus => {
     const exact = dimensions[dimension];
     if (!covered.has(dimension)) return exact;
+    if (
+      dimension === "filesystem" &&
+      captures.some(hasUnknownFilesystemEffects)
+    )
+      return exact;
     if (trace.verdict === "nonconforming") return exact;
     if (trace.verdict === "different")
       return traceShowsDifference && attributed.has(dimension)
@@ -395,6 +409,9 @@ const compareDimensions = (
     !sameNormalization ||
     hasUnknown(left, dimension) ||
     hasUnknown(right, dimension) ||
+    (dimension === "filesystem" &&
+      (hasUnknownFilesystemEffects(left) ||
+        hasUnknownFilesystemEffects(right))) ||
     processSourceTruncated(left, source) ||
     processSourceTruncated(right, source)
       ? "unknown"
@@ -436,17 +453,20 @@ export const compareProcessCaptures = (
     right.normalization,
   );
   const exactDimensions = compareDimensions(left, right, sameNormalization);
-  const trace =
+  const traceEvaluation =
     options.traceSpecification === undefined
       ? undefined
-      : compareProcessTraces(left, right, options.traceSpecification);
+      : evaluateProcessTraceComparison(left, right, options.traceSpecification);
+  const trace = traceEvaluation?.result;
   const dimensions =
-    trace === undefined || options.traceSpecification === undefined
+    traceEvaluation === undefined || options.traceSpecification === undefined
       ? exactDimensions
-      : applyTraceVerdict(exactDimensions, options.traceSpecification, trace, [
-          left,
-          right,
-        ]);
+      : applyTraceVerdict(
+          exactDimensions,
+          options.traceSpecification,
+          traceEvaluation,
+          [left, right],
+        );
   const divergenceCandidates = PROCESS_COMPARISON_DIMENSIONS.map((dimension) =>
     dimensions[dimension] === "unknown"
       ? null
@@ -489,11 +509,16 @@ export const compareProcessCaptures = (
               } as const)
             : !sameNormalization ||
                 left.residual_unknowns.length > 0 ||
-                right.residual_unknowns.length > 0
+                right.residual_unknowns.length > 0 ||
+                hasUnknownFilesystemEffects(left) ||
+                hasUnknownFilesystemEffects(right)
               ? ({
                   status: "unknown",
                   reason:
-                    "Residual unknowns prevent proving that no divergence occurred.",
+                    hasUnknownFilesystemEffects(left) ||
+                    hasUnknownFilesystemEffects(right)
+                      ? "Unresolved filesystem effects prevent proving that no divergence occurred."
+                      : "Residual unknowns prevent proving that no divergence occurred.",
                 } as const)
               : observedFirstDivergence;
   const observedStatus = deriveProcessComparisonStatus(
